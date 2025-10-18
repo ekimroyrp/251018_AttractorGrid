@@ -201,18 +201,21 @@ function projectToGround(event) {
 let dragging = false;
 
 function onPointerDown(event) {
+  updatePointer(event);
+  raycaster.setFromCamera(pointer, camera);
+  const intersections = raycaster.intersectObject(handle, false);
+  if (intersections.length === 0) {
+    return;
+  }
+
+  dragging = true;
+  controls.enabled = false;
+  renderer.domElement.setPointerCapture(event.pointerId);
+
   const planeHit = projectToGround(event);
   if (planeHit) {
     handle.position.set(planeHit.x, handleHeight, planeHit.z);
     triggerGridUpdate();
-  }
-
-  raycaster.setFromCamera(pointer, camera);
-  const intersections = raycaster.intersectObject(handle, false);
-  if (intersections.length > 0) {
-    dragging = true;
-    controls.enabled = false;
-    renderer.domElement.setPointerCapture(event.pointerId);
   }
 }
 
