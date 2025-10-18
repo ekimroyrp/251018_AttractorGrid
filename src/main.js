@@ -8,6 +8,7 @@ const app = document.getElementById('app');
 const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setPixelRatio(window.devicePixelRatio);
 renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 app.appendChild(renderer.domElement);
 
 const scene = new THREE.Scene();
@@ -30,6 +31,14 @@ controls.target.set(0, 0.5, 0);
 const ambientLight = new THREE.AmbientLight(0xffffff, 0.55);
 const dirLight = new THREE.DirectionalLight(0xffffff, 0.85);
 dirLight.position.set(8, 12, 6);
+dirLight.shadow.mapSize.set(2048, 2048);
+dirLight.shadow.camera.near = 2;
+dirLight.shadow.camera.far = 50;
+dirLight.shadow.camera.left = -25;
+dirLight.shadow.camera.right = 25;
+dirLight.shadow.camera.top = 25;
+dirLight.shadow.camera.bottom = -25;
+dirLight.shadow.bias = -0.0015;
 scene.add(ambientLight, dirLight);
 
 const ground = new THREE.Mesh(
@@ -109,6 +118,7 @@ const params = {
   farColor: `#${defaultFarColor.getHexString()}`,
   minRotation: 0,
   maxRotation: 180,
+  shadows: true,
 };
 
 let gridNeedsUpdate = true;
@@ -136,6 +146,8 @@ function rebuildGrid() {
     for (let iz = 0; iz < params.countY; iz += 1) {
       const mesh = new THREE.Mesh(baseGeometry, baseMaterial.clone());
       mesh.updateMorphTargets();
+      mesh.castShadow = params.shadows;
+      mesh.receiveShadow = params.shadows;
 
       const x = originX + ix * params.spacing;
       const z = originZ + iz * params.spacing;
@@ -151,9 +163,22 @@ function rebuildGrid() {
   }
 
   triggerGridUpdate();
+  applyShadowSettings();
 }
 
 rebuildGrid();
+
+function applyShadowSettings() {
+  renderer.shadowMap.enabled = params.shadows;
+  dirLight.castShadow = params.shadows;
+  handle.castShadow = params.shadows;
+  handle.receiveShadow = params.shadows;
+  ground.receiveShadow = params.shadows;
+  for (const cell of gridCells) {
+    cell.mesh.castShadow = params.shadows;
+    cell.mesh.receiveShadow = params.shadows;
+  }
+}
 
 function updatePointer(event) {
   const bounds = renderer.domElement.getBoundingClientRect();
@@ -237,6 +262,10 @@ gui
   .add(params, 'countY', 1, 40, 1)
   .name('Count Y')
   .onFinishChange(rebuildGrid);
+gui
+  .add(params, 'shadows')
+  .name('Shadows')
+  .onChange(applyShadowSettings);
 gui
   .addColor(params, 'closeColor')
   .name('Close Color')
