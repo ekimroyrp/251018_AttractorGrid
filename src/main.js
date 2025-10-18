@@ -95,6 +95,9 @@ const baseMaterial = new THREE.MeshStandardMaterial({
   metalness: 0.25,
 });
 
+const defaultCloseColor = new THREE.Color().setHSL(0.08, 0.65, 0.45);
+const defaultFarColor = new THREE.Color().setHSL(0.58, 0.65, 0.7);
+
 const gridCells = [];
 const params = {
   minSize: 0.4,
@@ -102,6 +105,8 @@ const params = {
   spacing: 1.8,
   countX: 12,
   countY: 12,
+  closeColor: `#${defaultCloseColor.getHexString()}`,
+  farColor: `#${defaultFarColor.getHexString()}`,
 };
 
 let gridNeedsUpdate = true;
@@ -230,8 +235,20 @@ gui
   .add(params, 'countY', 1, 40, 1)
   .name('Count Y')
   .onFinishChange(rebuildGrid);
+gui
+  .addColor(params, 'closeColor')
+  .name('Close Color')
+  .onChange(triggerGridUpdate);
+gui
+  .addColor(params, 'farColor')
+  .name('Far Color')
+  .onChange(triggerGridUpdate);
 
 const tempHandlePosition = new THREE.Vector3();
+const closeColor = new THREE.Color();
+const farColor = new THREE.Color();
+const closeHSL = { h: 0, s: 0, l: 0 };
+const farHSL = { h: 0, s: 0, l: 0 };
 
 function updateGridVisuals() {
   if (!gridNeedsUpdate || gridCells.length === 0) {
@@ -242,6 +259,11 @@ function updateGridVisuals() {
   const minSize = Math.min(params.minSize, params.maxSize);
   const maxSize = Math.max(params.minSize, params.maxSize);
   const sizeRange = maxSize - minSize;
+
+  closeColor.set(params.closeColor);
+  closeColor.getHSL(closeHSL);
+  farColor.set(params.farColor);
+  farColor.getHSL(farHSL);
 
   tempHandlePosition.copy(handle.position);
   tempHandlePosition.y = 0;
@@ -267,9 +289,10 @@ function updateGridVisuals() {
 
     cell.mesh.morphTargetInfluences[0] = t;
 
-    const hue = THREE.MathUtils.lerp(0.08, 0.58, t);
-    const lightness = THREE.MathUtils.lerp(0.45, 0.7, t);
-    cell.mesh.material.color.setHSL(hue, 0.65, lightness);
+    const hue = THREE.MathUtils.lerp(closeHSL.h, farHSL.h, t);
+    const saturation = THREE.MathUtils.lerp(closeHSL.s, farHSL.s, t);
+    const lightness = THREE.MathUtils.lerp(closeHSL.l, farHSL.l, t);
+    cell.mesh.material.color.setHSL(hue, saturation, lightness);
   }
 }
 
