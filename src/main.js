@@ -95,8 +95,8 @@ const baseMaterial = new THREE.MeshStandardMaterial({
   metalness: 0.25,
 });
 
-const defaultCloseColor = new THREE.Color().setHSL(0.08, 0.65, 0.45);
-const defaultFarColor = new THREE.Color().setHSL(0.58, 0.65, 0.7);
+const defaultCloseColor = new THREE.Color('#e170cc');
+const defaultFarColor = new THREE.Color('#2afa00');
 
 const gridCells = [];
 const params = {
@@ -107,6 +107,8 @@ const params = {
   countY: 12,
   closeColor: `#${defaultCloseColor.getHexString()}`,
   farColor: `#${defaultFarColor.getHexString()}`,
+  minRotation: 0,
+  maxRotation: 180,
 };
 
 let gridNeedsUpdate = true;
@@ -243,6 +245,14 @@ gui
   .addColor(params, 'farColor')
   .name('Far Color')
   .onChange(triggerGridUpdate);
+gui
+  .add(params, 'minRotation', -360, 360, 1)
+  .name('Min Rotation')
+  .onChange(triggerGridUpdate);
+gui
+  .add(params, 'maxRotation', -360, 360, 1)
+  .name('Max Rotation')
+  .onChange(triggerGridUpdate);
 
 const tempHandlePosition = new THREE.Vector3();
 const closeColor = new THREE.Color();
@@ -259,6 +269,9 @@ function updateGridVisuals() {
   const minSize = Math.min(params.minSize, params.maxSize);
   const maxSize = Math.max(params.minSize, params.maxSize);
   const sizeRange = maxSize - minSize;
+
+  const minRotationDeg = params.minRotation;
+  const maxRotationDeg = params.maxRotation;
 
   closeColor.set(params.closeColor);
   closeColor.getHSL(closeHSL);
@@ -288,6 +301,13 @@ function updateGridVisuals() {
     cell.mesh.position.y = scale * 0.5;
 
     cell.mesh.morphTargetInfluences[0] = t;
+
+    const rotationDeg = THREE.MathUtils.lerp(
+      minRotationDeg,
+      maxRotationDeg,
+      t,
+    );
+    cell.mesh.rotation.y = THREE.MathUtils.degToRad(rotationDeg);
 
     const hue = THREE.MathUtils.lerp(closeHSL.h, farHSL.h, t);
     const saturation = THREE.MathUtils.lerp(closeHSL.s, farHSL.s, t);
