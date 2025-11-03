@@ -21,3 +21,8 @@
 - **Rotation sliders:** Set minimum and maximum rotation angles that interpolate across the grid.
 - **Shadows toggle:** Enable or disable shadow casting for performance testing or crisp screenshots.
 - **Camera:** Orbit, pan, and zoom with standard mouse controls provided by OrbitControls.
+
+## Deployment
+- **Local production preview:** Run `npm install`, then `npm run build` followed by `npm run preview` to serve the compiled bundle.
+- **Publish to GitHub Pages:** From `main`, run `npm run build -- --base=./`, copy the contents of `dist/` into the `gh-pages` branch (or reuse the worktree workflow), commit, and `git push origin gh-pages`. Switch back to `main` afterwards.
+- **Live demo:** https://ekimroyrp.github.io/251018_AttractorGrid/
