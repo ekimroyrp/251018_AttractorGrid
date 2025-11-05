@@ -286,11 +286,19 @@ gui
   .name('Max Rotation')
   .onChange(triggerGridUpdate);
 
+const exportActions = {
+  exportMesh: exportGridAsOBJ,
+};
+gui.add(exportActions, 'exportMesh').name('Export Mesh');
+
 const tempHandlePosition = new THREE.Vector3();
 const closeColor = new THREE.Color();
 const farColor = new THREE.Color();
 const closeHSL = { h: 0, s: 0, l: 0 };
 const farHSL = { h: 0, s: 0, l: 0 };
+const exportBasePosition = new THREE.Vector3();
+const exportMorphedPosition = new THREE.Vector3();
+const exportTargetPosition = new THREE.Vector3();
 
 function updateGridVisuals() {
   if (!gridNeedsUpdate || gridCells.length === 0) {
@@ -346,6 +354,170 @@ function updateGridVisuals() {
     const lightness = THREE.MathUtils.lerp(closeHSL.l, farHSL.l, t);
     cell.mesh.material.color.setHSL(hue, saturation, lightness);
   }
+}
+
+function formatNumber(value) {
+  if (!Number.isFinite(value)) {
+    return '0';
+  }
+  const stringValue = value.toString();
+  if (stringValue === '-0') {
+    return '0';
+  }
+  return stringValue;
+}
+
+// Bake a grid cell into world-space geometry with morph targets applied.
+function bakeGridCell(mesh) {
+  mesh.updateMatrixWorld(true);
+
+  const sourceGeometry = mesh.geometry;
+  const bakedGeometry = sourceGeometry.clone();
+  const basePositions = sourceGeometry.attributes.position;
+  const positionAttr = bakedGeometry.attributes.position;
+  const morphAttrs = sourceGeometry.morphAttributes.position || [];
+  const influences = mesh.morphTargetInfluences || [];
+
+  if (morphAttrs.length > 0 && influences.length > 0) {
+    for (let i = 0; i < positionAttr.count; i += 1) {
+      exportBasePosition.fromBufferAttribute(basePositions, i);
+      exportMorphedPosition.copy(exportBasePosition);
+
+      for (let m = 0; m < morphAttrs.length; m += 1) {
+        const influence = influences[m];
+        if (!influence) {
+          continue;
+        }
+        exportTargetPosition.fromBufferAttribute(morphAttrs[m], i);
+        if (sourceGeometry.morphTargetsRelative) {
+          exportMorphedPosition.addScaledVector(exportTargetPosition, influence);
+        } else {
+          exportTargetPosition.sub(exportBasePosition).multiplyScalar(influence);
+          exportMorphedPosition.add(exportTargetPosition);
+        }
+      }
+
+      positionAttr.setXYZ(
+        i,
+        exportMorphedPosition.x,
+        exportMorphedPosition.y,
+        exportMorphedPosition.z,
+      );
+    }
+  }
+
+  const vertexCount = positionAttr.count;
+  const materialColor =
+    mesh.material && mesh.material.color ? mesh.material.color : null;
+  const r = materialColor ? materialColor.r : 1;
+  const g = materialColor ? materialColor.g : 1;
+  const b = materialColor ? materialColor.b : 1;
+  const colorArray = new Float32Array(vertexCount * 3);
+  for (let i = 0; i < vertexCount; i += 1) {
+    const offset = i * 3;
+    colorArray[offset] = r;
+    colorArray[offset + 1] = g;
+    colorArray[offset + 2] = b;
+  }
+  bakedGeometry.setAttribute('color', new THREE.BufferAttribute(colorArray, 3));
+
+  bakedGeometry.applyMatrix4(mesh.matrixWorld);
+  bakedGeometry.computeVertexNormals();
+
+  return bakedGeometry;
+}
+
+// Serialise the current grid into an OBJ download with per-vertex colors.
+function exportGridAsOBJ() {
+  if (gridCells.length === 0) {
+    return;
+  }
+
+  scene.updateMatrixWorld(true);
+
+  const now = new Date();
+  const timestamp = now.toISOString();
+  const lines = [
+    '# Attractor Grid export',
+    `# ${timestamp}`,
+    'o AttractorGrid',
+  ];
+
+  let vertexOffset = 1;
+  let normalOffset = 1;
+
+  for (const cell of gridCells) {
+    const baked = bakeGridCell(cell.mesh);
+    const positions = baked.attributes.position;
+    let normals = baked.attributes.normal;
+    if (!normals) {
+      baked.computeVertexNormals();
+      normals = baked.attributes.normal;
+    }
+    const colors = baked.attributes.color;
+    const vertexCount = positions.count;
+    const normalCount = normals.count;
+
+    for (let i = 0; i < vertexCount; i += 1) {
+      lines.push(
+        `v ${formatNumber(positions.getX(i))} ${formatNumber(
+          positions.getY(i),
+        )} ${formatNumber(positions.getZ(i))} ${formatNumber(
+          colors.getX(i),
+        )} ${formatNumber(colors.getY(i))} ${formatNumber(colors.getZ(i))}`,
+      );
+    }
+
+    for (let i = 0; i < normalCount; i += 1) {
+      lines.push(
+        `vn ${formatNumber(normals.getX(i))} ${formatNumber(
+          normals.getY(i),
+        )} ${formatNumber(normals.getZ(i))}`,
+      );
+    }
+
+    const indexAttr = baked.getIndex();
+    if (indexAttr) {
+      const indexArray = indexAttr.array;
+      for (let i = 0; i < indexArray.length; i += 3) {
+        const a = indexArray[i] + vertexOffset;
+        const b = indexArray[i + 1] + vertexOffset;
+        const c = indexArray[i + 2] + vertexOffset;
+        const na = indexArray[i] + normalOffset;
+        const nb = indexArray[i + 1] + normalOffset;
+        const nc = indexArray[i + 2] + normalOffset;
+        lines.push(`f ${a}//${na} ${b}//${nb} ${c}//${nc}`);
+      }
+    } else {
+      for (let i = 0; i < vertexCount; i += 3) {
+        const a = vertexOffset + i;
+        const b = vertexOffset + i + 1;
+        const c = vertexOffset + i + 2;
+        const na = normalOffset + i;
+        const nb = normalOffset + i + 1;
+        const nc = normalOffset + i + 2;
+        lines.push(`f ${a}//${na} ${b}//${nb} ${c}//${nc}`);
+      }
+    }
+
+    vertexOffset += vertexCount;
+    normalOffset += normalCount;
+    baked.dispose();
+  }
+
+  const objContent = lines.join('\n');
+  const blob = new Blob([objContent], { type: 'text/plain' });
+  const url = URL.createObjectURL(blob);
+  const fileName = `grid-export-${timestamp.replace(/[:.]/g, '-')}.obj`;
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = fileName;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  setTimeout(() => {
+    URL.revokeObjectURL(url);
+  }, 1000);
 }
 
 function onResize() {
